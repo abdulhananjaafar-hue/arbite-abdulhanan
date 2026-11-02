@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>سجل العمل والراتب</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --primary: #007AFF;
+            --success: #34C759;
+            --danger: #FF3B30;
+            --bg: #F2F2F7;
+            --card-bg: #FFFFFF;
+            --text: #1C1C1E;
+            --subtext: #8E8E93;
+            --border: #E5E5EA;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0; padding: 20px;
+            direction: rtl;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h2, h3 { margin-top: 0; text-align: center; }
+        .btn-group { display: flex; gap: 12px; margin-top: 15px; }
+        .btn {
+            flex: 1; padding: 16px; border: none; border-radius: 12px;
+            font-size: 16px; font-weight: bold; color: white; cursor: pointer;
+            text-align: center;
+        }
+        .btn-in { background-color: var(--success); }
+        .btn-out { background-color: var(--danger); }
+        .btn-export { background-color: var(--primary); margin-top: 10px; width: 100%; }
+        input, select {
+            width: 100%; padding: 12px; margin: 8px 0; border: 1px solid var(--border);
+            border-radius: 10px; box-sizing: border-box; font-size: 15px;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: center; }
+        th { background: #F8F8FA; }
+        .summary-box { background: #EBF5FF; border-radius: 12px; padding: 12px; margin-top: 15px; }
+        .summary-item { display: flex; justify-content: space-between; margin: 6px 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>⏱️ سجل العمل والراتب (ألمانيا)</h2>
+        
+        <div class="card">
+            <h3>تسجيل اليوم الحصري</h3>
+            <div class="btn-group">
+                <button class="btn btn-in" onclick="checkIn()">🟢 دخول</button>
+                <button class="btn btn-out" onclick="checkOut()">🔴 خروج</button>
+            </div>
+            <div id="status" style="text-align:center; margin-top:10px; font-size:14px; color:var(--subtext);"></div>
+        </div>
+
+        <div class="card">
+            <h3>⚙️ إعدادات الراتب والضرائب</h3>
+            <label>سعر الساعة (€):</label>
+            <input type="number" id="hourlyRate" value="14" onchange="calculateNetto()">
+            <label>الدرجة الضريبية (Steuerklasse):</label>
+            <select id="taxClass" onchange="calculateNetto()">
+                <option value="1">Klasse 1 (أعزب)</option>
+                <option value="3">Klasse 3 (متزوج / دخل أعلى)</option>
+                <option value="4">Klasse 4 (متزوج / دخل متساوي)</option>
+                <option value="5">Klasse 5 (متزوج / دخل أقل)</option>
+                <option value="6">Klasse 6 (عمل ثاني)</option>
+            </select>
+        </div>
+
+        <div class="card">
+            <h3>📊 الحساب الشهري الصافي</h3>
+            <div class="summary-box">
+                <div class="summary-item"><span>ساعات العمل الكلية:</span> <strong id="totalHours">0 ساعة</strong></div>
+                <div class="summary-item"><span>الإجمالي (Brutto):</span> <strong id="grossPay">0.00 €</strong></div>
+                <div class="summary-item"><span>الخصومات والضرائب:</span> <strong id="totalTaxes">0.00 €</strong></div>
+                <hr>
+                <div class="summary-item" style="font-size:16px;"><span>الصافي (Netto):</span> <strong id="netPay" style="color:var(--success);">0.00 €</strong></div>
+            </div>
+            <button class="btn btn-export" onclick="exportCSV()">📥 تصدير لـ Excel (CSV)</button>
+        </div>
+
+        <div class="card">
+            <h3>📜 سجل الأيام</h3>
+            <table id="logTable">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>البداية</th>
+                        <th>النهاية</th>
+                        <th>الساعات</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let logs = JSON.parse(localStorage.getItem('work_logs') || '[]');
+        let activeCheckIn = localStorage.getItem('active_checkin') || null;
+
+        function updateUI() {
+            const tbody = document.querySelector('#logTable tbody');
+            tbody.innerHTML = '';
+            let totalH = 0;
+
+            logs.forEach((log) => {
+                totalH += parseFloat(log.hours || 0);
+                let row = `<tr>
+                    <td>${log.date}</td>
+                    <td>${log.start}</td>
+                    <td>${log.end || '-'}</td>
+                    <td>${log.hours || '-'}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+
+            document.getElementById('totalHours').innerText = totalH.toFixed(2) + ' ساعة';
+            calculateNetto(totalH);
+            
+            const status = document.getElementById('status');
+            if (activeCheckIn) {
+                status.innerText = `تم تسجيل الدخول الساعة: ${activeCheckIn}`;
+            } else {
+                status.innerText = 'جاهز لتسجيل الدخول';
+            }
+        }
+
+        function checkIn() {
+            const now = new Date();
+            const timeStr = now.toTimeString().substring(0, 5);
+            activeCheckIn = timeStr;
+            localStorage.setItem('active_checkin', activeCheckIn);
+            updateUI();
+        }
+
+        function checkOut() {
+            if (!activeCheckIn) return alert('برجاء تسجيل الدخول أولاً!');
+            const now = new Date();
+            const dateStr = now.toISOString().split('T')[0];
+            const timeStr = now.toTimeString().substring(0, 5);
+
+            const start = new Date(`1970-01-01T${activeCheckIn}:00`);
+            const end = new Date(`1970-01-01T${timeStr}:00`);
+            let diffHours = (end - start) / (1000 * 60 * 60);
+            if (diffHours > 6) diffHours -= 0.5; // خصم 30 دقيقة استراحة أوتوماتيك
+
+            logs.push({ date: dateStr, start: activeCheckIn, end: timeStr, hours: diffHours.toFixed(2) });
+            localStorage.setItem('work_logs', JSON.stringify(logs));
+            activeCheckIn = null;
+            localStorage.removeItem('active_checkin');
+            updateUI();
+        }
+
+        function calculateNetto(totalH) {
+            if (totalH === undefined) {
+                totalH = logs.reduce((acc, l) => acc + parseFloat(l.hours || 0), 0);
+            }
+            const rate = parseFloat(document.getElementById('hourlyRate').value) || 0;
+            const gross = totalH * rate;
+            const taxClass = document.getElementById('taxClass').value;
+
+            let taxRate = 0.12;
+            if (taxClass == '3') taxRate = 0.05;
+            if (taxClass == '5' || taxClass == '6') taxRate = 0.18;
+
+            const sozial = gross * 0.1995;
+            const tax = gross * taxRate;
+            const net = Math.max(0, gross - sozial - tax);
+
+            document.getElementById('grossPay').innerText = gross.toFixed(2) + ' €';
+            document.getElementById('totalTaxes').innerText = (sozial + tax).toFixed(2) + ' €';
+            document.getElementById('netPay').innerText = net.toFixed(2) + ' €';
+        }
+
+        function exportCSV() {
+            let csv = 'التاريخ,وقت البداية,وقت النهاية,الساعات\n';
+            logs.forEach(l => { csv += `${l.date},${l.start},${l.end},${l.hours}\n`; });
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'Arbeitszeiten.csv';
+            link.click();
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
